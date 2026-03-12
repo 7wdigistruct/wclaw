@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CC_BIN=\"${HOME}/.wclaw/bin/wclaw\"; [ -x \"$CC_BIN\" ] && \"$CC_BIN\" stop",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

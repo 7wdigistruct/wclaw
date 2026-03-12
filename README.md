@@ -1,0 +1,286 @@
+<div align="center">
+
+# wclaw
+
+**Turn Claude Code into a remote AI agent you can control from anywhere.**
+
+A lightweight Rust daemon that bridges Claude Code with Telegram — giving you remote command execution, scheduled automation, health monitoring, and interactive tool approval, all from your phone.
+
+[Getting Started](#getting-started) · [Features](#features) · [Configuration](#configuration)
+
+</div>
+
+---
+
+## Why wclaw?
+
+Claude Code is powerful, but it's bound to your terminal. **wclaw** frees it — run prompts, schedule recurring jobs, and approve tool calls from Telegram while you're away from your desk.
+
+- **Message Claude from Telegram** — send text, photos, or voice notes and get responses back
+- **Schedule jobs with cron** — recurring prompts, reminders, or automated workflows
+- **Approve tool calls remotely** — inline Telegram buttons for Allow / Always Allow / Deny
+- **Heartbeat monitoring** — periodic health checks with alerts when something needs attention
+- **Session persistence** — conversations survive daemon restarts
+- **Voice transcription** — send voice notes, get them transcribed and processed via whisper
+
+## How Is This Different from Claude Code on Mobile?
+
+Claude Code's mobile app runs in a **cloud sandbox**. wclaw runs Claude Code on **your local machine** — your real files, your installed tools, your SDKs, your MCP servers.
+
+It also adds capabilities Claude Code doesn't have out of the box:
+
+- **Cron-based job scheduling** with persistence across restarts
+- **Heartbeat monitoring** with Telegram alerts
+- **Soul prompts** for persistent personality and context
+- **Voice note transcription** via whisper
+- **Session auto-resume** across daemon restarts
+- **Multi-user access** via Telegram pairing
+
+## Features
+
+### Remote Claude Invocation
+
+Send messages to your Telegram bot and wclaw forwards them to Claude Code. Responses stream back in real-time with automatic chunking for long replies. Attach photos or voice notes — they're downloaded, processed, and included in the prompt.
+
+### Job Scheduling
+
+Schedule recurring or one-shot jobs using cron expressions. Jobs persist across daemon restarts.
+
+| Action | Description |
+|--------|-------------|
+| `ClaudePrompt` | Run a prompt through Claude and send the response to a chat |
+| `TelegramMessage` | Send a static message to any chat |
+| `TelegramAdmin` | Send a message to the admin |
+
+### Tool Approval via Telegram
+
+When Claude wants to run a tool (write a file, execute a command, etc.), wclaw sends you a formatted preview on Telegram with inline buttons:
+
+- **Allow** — approve this single invocation
+- **Always Allow** — auto-approve this tool for the rest of the session
+- **Deny** — block the tool call
+
+It's the same security model as sitting at your terminal — permission prompts are just routed to Telegram instead. Uses Unix domain sockets and Claude Code's `PreToolUse` hook system, with a configurable timeout and automatic denial.
+
+### Heartbeat Monitoring
+
+Periodic health checks that invoke Claude with a configurable prompt. If the response isn't `HEARTBEAT_OK`, wclaw alerts you via Telegram. Useful for monitoring background agents or detecting stale sessions.
+
+### Voice Transcription
+
+Send voice notes via Telegram and wclaw transcribes them using `whisper-cpp` before forwarding to Claude. Requires `ffmpeg` and `whisper-cpp` in PATH.
+
+## Getting Started
+
+### Prerequisites
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed and authenticated
+- A [Telegram bot token](https://core.telegram.org/bots#how-do-i-create-a-bot) (from @BotFather)
+
+There are **3 ways** to run wclaw:
+
+1. [Claude Code Plugin](#option-1-claude-code-plugin-recommended) (recommended)
+2. [Standalone Daemon](#option-2-standalone-daemon)
+3. [Docker](#option-3-docker)
+
+---
+
+### Option 1: Claude Code Plugin (Recommended)
+
+**Install from the marketplace:**
+
+```
+/plugin marketplace add 7wdigistruct/wclaw
+/plugin install wclaw@wclaw
+/reload-plugins
+```
+
+Then run `/wclaw:setup` to configure your Telegram bot and pair your account, and `/wclaw:start` to start the daemon.
+
+> **Building from source?** Clone the repo, run `./build.sh` (requires [Rust 1.89+](https://rustup.rs/) and [Bun](https://bun.sh)), then `claude --plugin-dir ./plugin`.
+
+#### Plugin Commands
+
+| Command | Description |
+|---------|-------------|
+| `/wclaw:setup` | Run the interactive setup wizard |
+| `/wclaw:start` | Start the daemon in the background |
+| `/wclaw:stop` | Gracefully stop the daemon |
+| `/wclaw:status` | Show daemon status |
+| `/wclaw:pair` | Pair a new Telegram user |
+| `/wclaw:update` | Update to the latest release |
+| `/wclaw:doctor` | Diagnose common issues (9 checks) |
+
+---
+
+### Option 2: Standalone Daemon
+
+Run wclaw as a standalone daemon, independent of any Claude Code session. Requires [Rust 1.89+](https://rustup.rs/).
+
+```bash
+git clone https://github.com/7wdigistruct/wclaw.git
+cd wclaw
+cargo build --release
+```
+
+The binary is at `target/release/wclaw`.
+
+**First-time setup:**
+
+```bash
+./target/release/wclaw setup
+```
+
+This will:
+1. Verify Claude CLI authentication (or prompt you to log in)
+2. Ask for your Telegram bot token
+3. Generate a pairing code — send it to your bot to link your Telegram account
+4. Write the config to `~/.wclaw/config.json`
+
+**Start the daemon:**
+
+```bash
+# Foreground (with logs to stdout)
+./target/release/wclaw
+
+# Background (logs to /tmp/wclaw.log)
+./target/release/wclaw start
+```
+
+---
+
+### Option 3: Docker
+
+Run wclaw in a container. You still need to run setup on the host first.
+
+**Prerequisites:**
+1. Claude CLI authenticated on the host (`~/.claude/` with valid OAuth tokens)
+2. wclaw configured on the host (`~/.wclaw/config.json` — run `wclaw setup` first, or use Option 1)
+
+```bash
+docker compose up -d
+```
+
+The `docker-compose.yml` mounts both directories into the container:
+
+```yaml
+volumes:
+  - ${HOME}/.claude:/home/wclaw/.claude:rw      # OAuth tokens
+  - ${HOME}/.wclaw:/home/wclaw/.wclaw:rw  # Config & data
+```
+
+Override settings via a `.env` file:
+
+```bash
+WCLAW_MODEL=opus
+WCLAW_HEARTBEAT_INTERVAL=600
+```
+
+The image is a multi-stage build: Rust 1.89 builder + Node.js 22 slim runtime with Claude Code CLI, ffmpeg, and a non-root user.
+
+---
+
+### Adding a User
+
+To pair additional Telegram users (works with any method):
+
+```bash
+# Stop the daemon first (both use Telegram's getUpdates API)
+wclaw pair
+```
+
+This generates a pairing code. The new user sends it to the bot, and they're added to the allowed users list.
+
+## Configuration
+
+Config lives at `~/.wclaw/config.json` (created by `setup`). All fields can be overridden with environment variables using the `WCLAW_` prefix.
+
+### Key Options
+
+| Field | Default | Env Override | Description |
+|-------|---------|--------------|-------------|
+| `model` | `"sonnet"` | `WCLAW_MODEL` | Claude model to use |
+| `fallback_model` | — | `WCLAW_FALLBACK_MODEL` | Fallback model on rate limits |
+| `permission_mode` | `"accept_edits"` | `WCLAW_PERMISSION_MODE` | `dangerously_skip`, `accept_edits`, or `interactive` |
+| `subprocess_timeout_secs` | `300` | `WCLAW_TIMEOUT` | Max time per Claude invocation |
+| `heartbeat_enabled` | `true` | `WCLAW_HEARTBEAT_ENABLED` | Enable periodic health checks |
+| `heartbeat_interval_secs` | `900` | `WCLAW_HEARTBEAT_INTERVAL` | Seconds between heartbeats |
+| `voice_enabled` | `false` | `WCLAW_VOICE_ENABLED` | Enable voice transcription |
+| `telegram_approval` | `true` | — | Enable tool approval via Telegram |
+| `approval_timeout_secs` | — | `WCLAW_APPROVAL_TIMEOUT` | Seconds to wait for approval |
+| `max_budget_usd` | — | `WCLAW_MAX_BUDGET` | Per-invocation budget cap |
+| `working_dir` | — | `WCLAW_WORKING_DIR` | Working directory for Claude |
+| `update_check_interval_secs` | `300` | `WCLAW_UPDATE_CHECK_INTERVAL` | Seconds between update checks (0 to disable) |
+| `allowed_tools` | — | — | Whitelist of tool names |
+| `disallowed_tools` | — | — | Blacklist of tool names |
+
+### Soul Prompts
+
+Drop `.md` files in `~/.wclaw/prompts/` to inject persistent context into every Claude invocation. Useful for personality, project context, or standing instructions. Files are loaded alphabetically, capped at 64 KiB total.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     wclaw daemon                   │
+│                                                         │
+│  ┌──────────┐    ┌────────────┐    ┌─────────────────┐  │
+│  │ Telegram  │───>│  Request   │───>│  Claude Code    │ │
+│  │ Poll Loop │    │  Queue     │    │  CLI Invocation │ │
+│  └──────────┘    └────────────┘    └────────┬────────┘  │
+│                       ^                      │          │
+│  ┌──────────┐         │                      v          │
+│  │ Scheduler │────────┘         ┌─────────────────────┐ │
+│  │ (cron)    │                  │  Session Manager    │ │
+│  └──────────┘                   │  (persist/resume)   │ │
+│                                 └─────────────────────┘ │
+│  ┌──────────┐    ┌────────────────────────────────────┐ │
+│  │ Heartbeat │───>│  Status Tracker (status.json)     │ │
+│  └──────────┘    └────────────────────────────────────┘ │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  Permission Server (Unix socket)                 │   │
+│  │  PreToolUse hook <──> Telegram inline buttons    │   │
+│  └──────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Data Directory
+
+```
+~/.wclaw/
+├── config.json       # Main configuration
+├── session.json      # Claude session state
+├── scheduler.json    # Persisted cron jobs
+├── status.json       # Runtime status (flushed every 5s)
+├── daemon.lock       # Exclusive lock file
+├── permission.sock   # Unix socket for tool approval
+├── prompts/          # Soul prompts (*.md)
+└── inbox/            # Downloaded photos & voice notes
+```
+
+## CLI Reference
+
+```
+wclaw              Start daemon (foreground)
+wclaw start        Start daemon (background, logs to /tmp/wclaw.log)
+wclaw setup        Interactive first-time setup
+wclaw pair         Pair a new Telegram user
+wclaw update       Update to the latest release
+wclaw statusline   Print daemon status (for status bar integration)
+wclaw help         Show usage
+```
+
+## Resilience
+
+- **Rate limits** — automatic retry with jitter
+- **Session expiry** — reset and retry transparently
+- **Connection failures** — exponential backoff (up to 120s) for Telegram
+- **Corrupted state** — graceful fallback (new session, skip invalid jobs)
+- **Panic isolation** — each request runs in its own task
+- **Atomic file writes** — write-tmp-fsync-rename pattern prevents corruption
+- **Exclusive locking** — only one daemon instance can run at a time
+
+## License
+
+MIT

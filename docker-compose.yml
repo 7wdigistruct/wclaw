@@ -1,0 +1,21 @@
+services:
+  wclaw:
+    build: .
+    container_name: wclaw
+    restart: unless-stopped
+    volumes:
+      # OAuth tokens — MUST be read-write so Claude CLI can refresh expired tokens.
+      - ${HOME}/.claude:/home/wclaw/.claude:rw
+      # Daemon config and data (config.json, session.json, scheduler.json, inbox/).
+      - ${HOME}/.wclaw:/home/wclaw/.wclaw:rw
+    # Pass through WCLAW_* env vars from .env (create from .env.example).
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - RUST_LOG=info
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

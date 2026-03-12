@@ -1,0 +1,17 @@
+{
+  "name": "wclaw",
+  "description": "Remote agent daemon for Claude Code — Telegram bot, scheduled jobs, heartbeat monitoring, and explicit permission approval",
+  "version": "0.0.0",
+  "author": {
+    "name": "Eiz"
+  },
+  "repository": "https://github.com/7wdigistruct/wclaw",
+  "license": "MIT",
+  "keywords": [
+    "telegram",
+    "daemon",
+    "scheduler",
+    "remote",
+    "agent"
+  ]
+}
